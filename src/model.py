@@ -173,3 +173,168 @@ def build_cnn():
 
 if __name__ == "__main__":
     build_cnn()
+
+
+
+
+# ==================================================
+# Build ResNet50 Model
+# ==================================================
+
+def build_resnet50():
+
+    # Load Pretrained ResNet50
+    base_model = ResNet50(
+
+        weights="imagenet",
+
+        include_top=False,
+
+        input_shape=(
+
+            config.IMAGE_SIZE[0],
+            config.IMAGE_SIZE[1],
+            3
+
+        )
+
+    )
+
+    # Freeze pretrained layers
+    base_model.trainable = False
+
+    model = Sequential([
+
+        base_model,
+
+        layers.GlobalAveragePooling2D(),
+
+        layers.Dense(
+
+            256,
+
+            activation="relu"
+
+        ),
+
+        layers.Dropout(
+
+            0.5
+
+        ),
+
+        layers.Dense(
+
+            config.NUM_CLASSES,
+
+            activation="softmax"
+
+        )
+
+    ])
+
+    model.compile(
+
+        optimizer="adam",
+
+        loss="sparse_categorical_crossentropy",
+
+        metrics=["accuracy"]
+
+    )
+
+    print("\nResNet50 Model Summary:\n")
+
+    model.summary()
+
+    return model
+
+# ==================================================
+# Test Model
+# ==================================================
+
+if __name__ == "__main__":
+        build_resnet50()
+
+
+
+# ==================================================
+# Build EfficientNetB7 Model
+# ==================================================
+
+def build_efficientnetb7():
+
+    # Load pretrained EfficientNetB7
+
+    base_model = EfficientNetB7(
+
+        weights="imagenet",
+
+        include_top=False,
+
+        input_shape=(
+
+            config.IMAGE_SIZE[0],
+            config.IMAGE_SIZE[1],
+            3
+
+        )
+
+    )
+
+    # Freeze pretrained layers
+
+    base_model.trainable = False
+
+    model = Sequential([
+
+        base_model,
+
+        layers.GlobalAveragePooling2D(),
+
+        layers.Dense(
+
+            256,
+
+            activation="relu"
+
+        ),
+
+        layers.Dropout(
+
+            0.5
+
+        ),
+
+        layers.Dense(
+
+            config.NUM_CLASSES,
+
+            activation="softmax"
+
+        )
+
+    ])
+
+    model.compile(
+
+        optimizer="adam",
+
+        loss="sparse_categorical_crossentropy",
+
+        metrics=["accuracy"]
+
+    )
+
+    print("\nEfficientNetB7 Model Summary:\n")
+
+    model.summary()
+
+    return model
+
+# ==================================================
+# Test Model
+# ==================================================
+
+if __name__ == "__main__":
+    build_efficientnetb7()
