@@ -1,136 +1,283 @@
 """
 Model Training
-Grape Disease Classification Project
-
-This module trains:
-1. CNN
-2. ResNet50
-3. EfficientNetB7
+Grape Disease Classification
 """
 
-# ==================================================
-# Imports
-# ==================================================
+import copy
+import time
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
-import os
-import pickle
-import tensorflow as tf
-
-from tensorflow.keras.callbacks import (
-    ModelCheckpoint,
-    EarlyStopping,
-    ReduceLROnPlateau
-)
+from torch.amp import autocast, GradScaler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 import config
-from dataloader import load_datasets
-from model import (
-    build_cnn,
-    build_resnet50,
-    build_efficientnetb7
-)
+from dataloader import get_dataloaders
+from model import get_model
 
-# ==================================================
-# Create Directories
-# ==================================================
+torch.backends.cudnn.benchmark = True
+torch.set_float32_matmul_precision("high")
 
-os.makedirs(config.MODEL_SAVE_PATH, exist_ok=True)
-os.makedirs(config.HISTORY_SAVE_PATH, exist_ok=True)
+# ======================================================
+# Train One Epoch
+# ======================================================
 
-# ==================================================
-# Train Function
-# ==================================================
+def train_one_epoch(model, loader, criterion, optimizer, scaler):
 
-def train_model(model, model_name):
+    model.train()
 
-    print(f"\n{'='*50}")
-    print(f"Training {model_name}")
-    print(f"{'='*50}\n")
+    running_loss = 0
+    correct = 0
+    total = 0
 
-    train_dataset, validation_dataset, _ = load_datasets()
+    for images, labels in loader:
 
-    checkpoint = ModelCheckpoint(
-        filepath=os.path.join(
-            config.MODEL_SAVE_PATH,
-            f"{model_name}.keras"
-        ),
-        monitor="val_accuracy",
-        save_best_only=True,
-        verbose=1
+        images = images.to(config.DEVICE, non_blocking=True)
+        labels = labels.to(config.DEVICE, non_blocking=True)
+
+        optimizer.zero_grad()
+
+        with autocast(device_type="cuda"):
+
+            outputs = model(images)
+
+            loss = criterion(outputs, labels)
+        scaler.scale(loss).backward()
+
+        scaler.step(optimizer)
+
+        scaler.update()
+
+        running_loss += loss.item() * images.size(0)
+
+        _, predicted = outputs.max(1)
+
+        total += labels.size(0)
+
+        correct += predicted.eq(labels).sum().item()
+
+    epoch_loss = running_loss / total
+
+    epoch_acc = correct / total
+
+    return epoch_loss, epoch_acc
+
+
+# ======================================================
+# Validation
+# ======================================================
+
+def validate(model, loader, criterion):
+
+    model.eval()
+
+    running_loss = 0
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+
+        for images, labels in loader:
+
+            images = images.to(config.DEVICE, non_blocking=True)
+
+            labels = labels.to(config.DEVICE, non_blocking=True)
+
+            outputs = model(images)
+
+            loss = criterion(outputs, labels)
+
+            running_loss += loss.item() * images.size(0)
+
+            _, predicted = outputs.max(1)
+
+            total += labels.size(0)
+
+            correct += predicted.eq(labels).sum().item()
+
+    loss = running_loss / total
+
+    acc = correct / total
+
+    return loss, acc
+
+
+# ======================================================
+# Train
+# ======================================================
+
+def train_model(model_name):
+
+    print("="*60)
+
+    print("Training:", model_name)
+
+    print("="*60)
+
+    train_loader, val_loader, _ = get_dataloaders()
+
+    model = get_model(model_name).to(config.DEVICE)
+
+    criterion = nn.CrossEntropyLoss()
+
+    optimizer = optim.Adam(
+
+        filter(lambda p: p.requires_grad, model.parameters()),
+
+        lr=config.LEARNING_RATE
+
     )
 
-    early_stop = EarlyStopping(
-        monitor="val_loss",
-        patience=5,
-        restore_best_weights=True,
-        verbose=1
-    )
+    scheduler = ReduceLROnPlateau(
 
-    reduce_lr = ReduceLROnPlateau(
-        monitor="val_loss",
+        optimizer,
+
+        mode="min",
+
         factor=0.2,
-        patience=3,
-        verbose=1
-    )
 
-    history = model.fit(
-
-        train_dataset,
-
-        validation_data=validation_dataset,
-
-        epochs=config.EPOCHS,
-
-        callbacks=[
-            checkpoint,
-            early_stop,
-            reduce_lr
-        ]
+        patience=3
 
     )
 
-    # ============================================
-    # Save History
-    # ============================================
+    scaler = GradScaler("cuda")
 
-    history_path = os.path.join(
-        config.HISTORY_SAVE_PATH,
-        f"{model_name}_history.pkl"
+    history = {
+
+        "train_loss": [],
+
+        "val_loss": [],
+
+        "train_acc": [],
+
+        "val_acc": []
+
+    }
+
+    best_weights = copy.deepcopy(model.state_dict())
+
+    best_acc = 0
+
+    patience = 4
+
+    wait = 0
+
+    start = time.time()
+
+    for epoch in range(config.EPOCHS):
+
+        train_loss, train_acc = train_one_epoch(
+
+            model,
+
+            train_loader,
+
+            criterion,
+
+            optimizer,
+
+            scaler
+
+        )
+
+        val_loss, val_acc = validate(
+
+            model,
+
+            val_loader,
+
+            criterion
+
+        )
+
+        scheduler.step(val_loss)
+
+        history["train_loss"].append(train_loss)
+
+        history["val_loss"].append(val_loss)
+
+        history["train_acc"].append(train_acc)
+
+        history["val_acc"].append(val_acc)
+
+        print(
+
+            f"Epoch {epoch+1:02}/{config.EPOCHS}"
+
+            f" | Train Loss {train_loss:.4f}"
+
+            f" | Train Acc {train_acc:.4f}"
+
+            f" | Val Loss {val_loss:.4f}"
+
+            f" | Val Acc {val_acc:.4f}"
+
+        )
+
+        if val_acc > best_acc:
+
+            best_acc = val_acc
+
+            wait = 0
+
+            best_weights = copy.deepcopy(model.state_dict())
+
+            torch.save(
+
+                {
+
+                    "epoch": epoch + 1,
+
+                    "model_state_dict": model.state_dict(),
+
+                    "optimizer_state_dict": optimizer.state_dict(),
+
+                    "best_accuracy": best_acc
+
+                },
+
+                config.MODEL_DIR / f"{model_name}.pth"
+
+            )
+
+        else:
+
+            wait += 1
+
+            if wait >= patience:
+
+                print("Early Stopping")
+
+                break
+
+    end = time.time()
+
+    model.load_state_dict(best_weights)
+
+    print(f"\nBest Validation Accuracy : {best_acc:.4f}")
+
+    print(f"Training Time : {(end-start)/60:.2f} minutes")
+
+    torch.save(
+
+        history,
+
+        config.OUTPUT_DIR / f"{model_name}_history.pt"
+
     )
 
-    with open(history_path, "wb") as file:
-        pickle.dump(history.history, file)
 
-    print(f"\nHistory saved to: {history_path}")
-
-    return history
-
-
-# ==================================================
+# ======================================================
 # Main
-# ==================================================
+# ======================================================
 
 if __name__ == "__main__":
 
-    # ============================================
-    # CNN
-    # ============================================
+    train_model("cnn")
 
-    cnn_model = build_cnn()
-    train_model(cnn_model, "cnn")
+    train_model("resnet50")
 
-    # ============================================
-    # ResNet50
-    # ============================================
+    train_model("efficientnetb7")
 
-    resnet_model = build_resnet50()
-    train_model(resnet_model, "resnet50")
-
-    # ============================================
-    # EfficientNetB7
-    # ============================================
-
-    efficientnet_model = build_efficientnetb7()
-    train_model(efficientnet_model, "efficientnetb7")
-
-    print("\nAll models trained successfully!")
+    print("\nTraining Finished.")

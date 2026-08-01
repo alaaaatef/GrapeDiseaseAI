@@ -1,79 +1,65 @@
 """
 Project Configuration
-Grape Disease Classification Project
 """
 
-# ==================================================
-# Project Information
-# ==================================================
-PROJECT_NAME = "Grape Disease Classification"
-PROJECT_VERSION = "1.0.0"
+from pathlib import Path
+import torch
 
-# ==================================================
-# Random Seed
-# ==================================================
-SEED = 42
+# ===========================
+# Paths
+# ===========================
 
-# ==================================================
-# Image Settings
-# ==================================================
-IMAGE_SIZE = (224, 224)
-BATCH_SIZE = 32
+ROOT = Path(__file__).resolve().parent.parent
 
-# ==================================================
-# Dataset Split
-# ==================================================
-VALIDATION_SPLIT = 0.2
+TRAIN_DIR = ROOT / "data" / "processed" / "train_augmented"
+VALIDATION_DIR = ROOT / "data" / "processed" / "validation"
+TEST_DIR = ROOT / "data" / "raw" / "test"
 
-# ==================================================
-# Dataset Paths
-# ==================================================
-RAW_TRAIN_DIR = "data/raw/train"
-RAW_TEST_DIR = "data/raw/test"
+MODEL_DIR = ROOT / "models"
+OUTPUT_DIR = ROOT / "outputs"
 
-PROCESSED_TRAIN_DIR = "data/processed/train"
-PROCESSED_VAL_DIR = "data/processed/validation"
-PROCESSED_TEST_DIR = "data/processed/test"
+MODEL_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR.mkdir(exist_ok=True)
 
-REPORTS_DIR = "data/reports"
+# ===========================
+# Classes
+# ===========================
 
-# ==================================================
-# Class Information
-# ==================================================
 CLASS_NAMES = [
     "Black Rot",
-    "Esca",
+    "ESCA",
     "Healthy",
     "Leaf Blight"
 ]
 
 NUM_CLASSES = len(CLASS_NAMES)
 
-# ==================================================
-# Supported Image Formats
-# ==================================================
-SUPPORTED_FORMATS = (
-    ".jpg",
-    ".jpeg",
-    ".png"
+# ===========================
+# Image
+# ===========================
+
+IMAGE_SIZE = (224, 224)
+
+BATCH_SIZE = 32
+
+NUM_WORKERS = 4
+
+# ===========================
+# Training
+# ===========================
+
+EPOCHS = 15
+
+LEARNING_RATE = 1e-3
+
+SEED = 42
+
+# ===========================
+# Device
+# ===========================
+
+DEVICE = torch.device(
+    "cuda" if torch.cuda.is_available() else "cpu"
 )
 
-# ==================================================
-# Training Settings
-# ==================================================
-SHUFFLE = True
-
-
-# ==================================================
-# Training
-# ==================================================
-
-EPOCHS = 20
-
-# ==================================================
-# Save Paths
-# ==================================================
-
-MODEL_SAVE_PATH = "models"
-
-HISTORY_SAVE_PATH = "history"
+print(f"Device: {DEVICE}")

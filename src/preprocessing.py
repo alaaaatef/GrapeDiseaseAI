@@ -10,83 +10,31 @@ Grape Disease Classification Project
 import tensorflow as tf
 
 # ==================================================
-# Data Augmentation
-# ==================================================
-
-data_augmentation = tf.keras.Sequential([
-    tf.keras.layers.RandomFlip("horizontal_and_vertical"),
-    tf.keras.layers.RandomRotation(0.15),
-    tf.keras.layers.RandomZoom(0.15),
-    tf.keras.layers.RandomContrast(0.1),
-])
-
-# ==================================================
 # Normalization Layer
 # ==================================================
 
-normalization = tf.keras.layers.Rescaling(
-    1.0 / 255
-)
+normalization = tf.keras.layers.Rescaling(1.0 / 255)
 
 # ==================================================
 # Preprocess Dataset
 # ==================================================
 
-def preprocess_dataset(dataset, training=True):
-
+def preprocess_dataset(dataset):
     """
-    Apply preprocessing to dataset.
+    Normalize images only.
 
-    Parameters
-    ----------
-    dataset : tf.data.Dataset
-
-    training : bool
-
-    Returns
-    -------
-    tf.data.Dataset
+    Since the downloaded dataset is already augmented,
+    no online data augmentation is applied.
     """
-
-    # Normalize Images
 
     dataset = dataset.map(
-
         lambda images, labels: (
-
             normalization(images),
-
             labels
-
         ),
-
         num_parallel_calls=tf.data.AUTOTUNE
-
     )
 
-    # Apply Data Augmentation only for Training
-
-    if training:
-
-        dataset = dataset.map(
-
-            lambda images, labels: (
-
-                data_augmentation(images),
-
-                labels
-
-            ),
-
-            num_parallel_calls=tf.data.AUTOTUNE
-
-        )
-
-    # Improve Performance
-
-    dataset = dataset.prefetch(
-        tf.data.AUTOTUNE
-    )
+    dataset = dataset.prefetch(tf.data.AUTOTUNE)
 
     return dataset
-

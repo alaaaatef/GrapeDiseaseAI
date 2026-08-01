@@ -22,3 +22,15 @@ outputs/
 .ipynb_checkpoints/
 
 .env
+
+# Model checkpoints (اختياري)
+*.pth
+
+# Torch history (اختياري)
+*.pt
+
+# Logs
+*.log
+
+# Temporary files
+temp/

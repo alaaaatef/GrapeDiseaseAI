@@ -1,67 +1,91 @@
 """
 Model Evaluation
-Grape Disease Classification Project
-
-This module evaluates:
-1. CNN
-2. ResNet50
-3. EfficientNetB7
+Grape Disease Classification
 """
 
-# ==================================================
-# Imports
-# ==================================================
-
-import tensorflow as tf
-import numpy as np
+import time
 import matplotlib.pyplot as plt
-import seaborn as sns
+
+import torch
 
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
     recall_score,
     f1_score,
+    classification_report,
     confusion_matrix,
-    classification_report
+    ConfusionMatrixDisplay
 )
 
 import config
-from data_loader import load_datasets
+from dataloader import get_dataloaders
+from model import get_model
 
-# ==================================================
-# Evaluate Function
-# ==================================================
 
-def evaluate_model(model_name):
+# ==========================================================
+# Evaluate
+# ==========================================================
 
-    print(f"\n========== Evaluating {model_name} ==========\n")
+def evaluate(model_name):
 
-    # Load model
-    model = tf.keras.models.load_model(
-        f"{config.MODEL_SAVE_PATH}/{model_name}.keras"
+    print("="*60)
+    print(f"Evaluating {model_name}")
+    print("="*60)
+
+    _, _, test_loader = get_dataloaders()
+
+    model = get_model(model_name)
+
+    checkpoint = torch.load(
+        config.MODEL_DIR / f"{model_name}.pth",
+        map_location=config.DEVICE
     )
 
-    # Load Test Dataset
-    _, _, test_dataset = load_datasets()
+    model.load_state_dict(checkpoint["model_state_dict"])
 
-    # Predictions
+    model.to(config.DEVICE)
+
+    model.eval()
+
     y_true = []
     y_pred = []
 
-    for images, labels in test_dataset:
+    total_time = 0
 
-        predictions = model.predict(images, verbose=0)
+    with torch.no_grad():
 
-        predicted_labels = np.argmax(predictions, axis=1)
+        for images, labels in test_loader:
 
-        y_true.extend(labels.numpy())
+            images = images.to(
+                config.DEVICE,
+                non_blocking=True
+            )
 
-        y_pred.extend(predicted_labels)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
 
-    # ==================================================
-    # Metrics
-    # ==================================================
+            start = time.perf_counter()
+
+            with torch.amp.autocast(
+                device_type="cuda",
+                enabled=torch.cuda.is_available()
+            ):
+
+                outputs = model(images)
+
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+
+            end = time.perf_counter()
+
+            total_time += end - start
+
+            predictions = outputs.argmax(1)
+
+            y_true.extend(labels.numpy())
+
+            y_pred.extend(predictions.cpu().numpy())
 
     accuracy = accuracy_score(y_true, y_pred)
 
@@ -83,72 +107,88 @@ def evaluate_model(model_name):
         average="weighted"
     )
 
+    print()
+
     print(f"Accuracy  : {accuracy:.4f}")
+
     print(f"Precision : {precision:.4f}")
+
     print(f"Recall    : {recall:.4f}")
+
     print(f"F1 Score  : {f1:.4f}")
 
-    # ==================================================
-    # Classification Report
-    # ==================================================
+    print()
 
-    print("\nClassification Report\n")
+    print(classification_report(
 
-    print(
+        y_true,
 
-        classification_report(
+        y_pred,
 
-            y_true,
-            y_pred,
-            target_names=config.CLASS_NAMES
+        target_names=config.CLASS_NAMES
 
-        )
+    ))
+
+    cm = confusion_matrix(
+
+        y_true,
+
+        y_pred
 
     )
 
-    # ==================================================
-    # Confusion Matrix
-    # ==================================================
+    disp = ConfusionMatrixDisplay(
 
-    cm = confusion_matrix(y_true, y_pred)
+        confusion_matrix=cm,
 
-    plt.figure(figsize=(8,6))
+        display_labels=config.CLASS_NAMES
 
-    sns.heatmap(
+    )
 
-        cm,
-
-        annot=True,
-
-        fmt="d",
+    disp.plot(
 
         cmap="Blues",
 
-        xticklabels=config.CLASS_NAMES,
-
-        yticklabels=config.CLASS_NAMES
+        values_format="d"
 
     )
 
-    plt.title(f"{model_name} Confusion Matrix")
-
-    plt.xlabel("Predicted")
-
-    plt.ylabel("Actual")
-
     plt.tight_layout()
 
+    plt.savefig(
+
+        config.OUTPUT_DIR /
+
+        f"{model_name}_confusion_matrix.png",
+
+        dpi=300
+
+    )
+
     plt.show()
+    plt.close()
+
+    inference_time = (
+
+        total_time /
+
+        len(test_loader.dataset)
+
+    ) * 1000
+
+    print()
+
+    print(f"Average Inference Time : {inference_time:.2f} ms/image")
 
 
-# ==================================================
+# ==========================================================
 # Main
-# ==================================================
+# ==========================================================
 
 if __name__ == "__main__":
 
-    evaluate_model("cnn")
+    evaluate("cnn")
 
-    evaluate_model("resnet50")
+    evaluate("resnet50")
 
-    evaluate_model("efficientnetb7")
+    evaluate("efficientnetb7")

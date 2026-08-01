@@ -1,329 +1,236 @@
 """
 Model Architectures
-Grape Disease Classification Project
+Grape Disease Classification
+
+1. Baseline CNN
+2. ResNet50
+3. EfficientNetB7
 """
 
-# ==================================================
-# Imports
-# ==================================================
+import torch
+import torch.nn as nn
 
-import tensorflow as tf
-
-from tensorflow.keras import Sequential
-from tensorflow.keras import layers
-from tensorflow.keras.applications import ResNet50
-from tensorflow.keras.applications import EfficientNetB7
+from torchvision.models import (
+    resnet50,
+    efficientnet_b7,
+    ResNet50_Weights,
+    EfficientNet_B7_Weights
+)
 
 import config
 
 
-# ==================================================
-# Build CNN Model
-# ==================================================
+# ==========================================================
+# Baseline CNN
+# ==========================================================
 
-def build_cnn():
-    """
-    Build Baseline CNN Model
-    """
+class BaselineCNN(nn.Module):
 
-    model = Sequential()
+    def __init__(self):
 
-    # ==================================================
-    # Input Layer
-    # ==================================================
+        super().__init__()
 
-    model.add(
-        layers.Input(
-            shape=(
-                config.IMAGE_SIZE[0],
-                config.IMAGE_SIZE[1],
-                3
+        self.features = nn.Sequential(
+
+            # -----------------------------
+            # Block 1
+            # -----------------------------
+            nn.Conv2d(3, 32, kernel_size=6, padding="same"),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+
+            # -----------------------------
+            # Block 2
+            # -----------------------------
+            nn.Conv2d(32, 32, kernel_size=5, padding="same"),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+
+            # -----------------------------
+            # Block 3
+            # -----------------------------
+            nn.Conv2d(32, 32, kernel_size=4, padding="same"),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+
+            # -----------------------------
+            # Block 4
+            # -----------------------------
+            nn.Conv2d(32, 32, kernel_size=3, padding="same"),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+
+            # -----------------------------
+            # Block 5
+            # -----------------------------
+            nn.Conv2d(32, 32, kernel_size=3, padding="same"),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+
+            # -----------------------------
+            # Block 6
+            # -----------------------------
+            nn.Conv2d(32, 32, kernel_size=3, padding="same"),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(32, 32, kernel_size=3, padding="same"),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+
+            nn.MaxPool2d(2),
+
+            nn.AdaptiveAvgPool2d((3, 3))
+
+        )   # ← القوس ده كان ناقص
+
+        self.classifier = nn.Sequential(
+
+            nn.Flatten(),
+
+            nn.Dropout(0.2),
+
+            nn.Linear(32 * 3 * 3, 512),
+
+            nn.ReLU(inplace=True),
+
+            nn.Linear(512, 512),
+
+            nn.ReLU(inplace=True),
+
+            nn.Linear(
+                512,
+                config.NUM_CLASSES
             )
+
         )
-    )
 
-    # ==================================================
-    # CNN Block 1
-    # ==================================================
+    def forward(self, x):
 
-    model.add(
-        layers.Conv2D(
-            filters=32,
-            kernel_size=(3, 3),
-            activation="relu",
-            padding="same"
-        )
-    )
+        x = self.features(x)
 
-    model.add(
-        layers.BatchNormalization()
-    )
+        x = self.classifier(x)
 
-    model.add(
-        layers.MaxPooling2D(
-            pool_size=(2, 2)
-        )
-    )
-
-    # ==================================================
-    # CNN Block 2
-    # ==================================================
-
-    model.add(
-        layers.Conv2D(
-            filters=64,
-            kernel_size=(3, 3),
-            activation="relu",
-            padding="same"
-        )
-    )
-
-    model.add(
-        layers.BatchNormalization()
-    )
-
-    model.add(
-        layers.MaxPooling2D(
-            pool_size=(2, 2)
-        )
-    )
-
-    # ==================================================
-    # CNN Block 3
-    # ==================================================
-
-    model.add(
-        layers.Conv2D(
-            filters=128,
-            kernel_size=(3, 3),
-            activation="relu",
-            padding="same"
-        )
-    )
-
-    model.add(
-        layers.BatchNormalization()
-    )
-
-    model.add(
-        layers.MaxPooling2D(
-            pool_size=(2, 2)
-        )
-    )
-
-    # ==================================================
-    # Flatten
-    # ==================================================
-
-    model.add(
-        layers.Flatten()
-    )
-
-    # ==================================================
-    # Dense Layer
-    # ==================================================
-
-    model.add(
-        layers.Dense(
-            256,
-            activation="relu"
-        )
-    )
-
-    # ==================================================
-    # Dropout
-    # ==================================================
-
-    model.add(
-        layers.Dropout(
-            0.5
-        )
-    )
-
-    # ==================================================
-    # Output Layer
-    # ==================================================
-
-    model.add(
-        layers.Dense(
-            config.NUM_CLASSES,
-            activation="softmax"
-        )
-    )
-
-    # ==================================================
-    # Compile Model
-    # ==================================================
-
-    model.compile(
-        optimizer="adam",
-        loss="sparse_categorical_crossentropy",
-        metrics=["accuracy"]
-    )
-
-    print("\nCNN Model Summary:\n")
-    model.summary()
-
-    return model
+        return x
 
 
-
-# ==================================================
-# Build ResNet50 Model
-# ==================================================
+# ==========================================================
+# ResNet50
+# ==========================================================
 
 def build_resnet50():
 
-    # Load Pretrained ResNet50
-    base_model = ResNet50(
+    model = resnet50(
+        weights=ResNet50_Weights.IMAGENET1K_V2
+    )
 
-        weights="imagenet",
+    # -----------------------------------
+    # Freeze Backbone
+    # -----------------------------------
+    for param in model.parameters():
+        param.requires_grad = False
 
-        include_top=False,
+    # -----------------------------------
+    # Replace Classifier
+    # -----------------------------------
+    model.fc = nn.Sequential(
 
-        input_shape=(
+        nn.Linear(
+            model.fc.in_features,
+            512
+        ),
 
-            config.IMAGE_SIZE[0],
-            config.IMAGE_SIZE[1],
-            3
+        nn.ReLU(inplace=True),
 
+        nn.Dropout(0.5),
+
+        nn.Linear(
+            512,
+            config.NUM_CLASSES
         )
 
     )
 
-    # Freeze pretrained layers
-    base_model.trainable = False
-
-    model = Sequential([
-
-        base_model,
-
-        layers.GlobalAveragePooling2D(),
-
-        layers.Dense(
-
-            256,
-
-            activation="relu"
-
-        ),
-
-        layers.Dropout(
-
-            0.5
-
-        ),
-
-        layers.Dense(
-
-            config.NUM_CLASSES,
-
-            activation="softmax"
-
-        )
-
-    ])
-
-    model.compile(
-
-        optimizer="adam",
-
-        loss="sparse_categorical_crossentropy",
-
-        metrics=["accuracy"]
-
-    )
-
-    print("\nResNet50 Model Summary:\n")
-
-    model.summary()
+    # -----------------------------------
+    # Train only classifier
+    # -----------------------------------
+    for param in model.fc.parameters():
+        param.requires_grad = True
 
     return model
 
 
+# ==========================================================
+# EfficientNetB7
+# ==========================================================
 
-# ==================================================
-# Build EfficientNetB7 Model
-# ==================================================
+def build_efficientnet():
 
-def build_efficientnetb7():
+    model = efficientnet_b7(
+        weights=EfficientNet_B7_Weights.DEFAULT
+    )
 
-    # Load pretrained EfficientNetB7
+    # -----------------------------------
+    # Freeze Backbone
+    # -----------------------------------
+    for param in model.parameters():
+        param.requires_grad = False
 
-    base_model = EfficientNetB7(
+    in_features = model.classifier[1].in_features
 
-        weights="imagenet",
+    # -----------------------------------
+    # Replace Classifier
+    # -----------------------------------
+    model.classifier = nn.Sequential(
 
-        include_top=False,
+        nn.Dropout(0.5),
 
-        input_shape=(
+        nn.Linear(
+            in_features,
+            512
+        ),
 
-            config.IMAGE_SIZE[0],
-            config.IMAGE_SIZE[1],
-            3
+        nn.ReLU(inplace=True),
 
+        nn.Dropout(0.5),
+
+        nn.Linear(
+            512,
+            config.NUM_CLASSES
         )
 
     )
 
-    # Freeze pretrained layers
-
-    base_model.trainable = False
-
-    model = Sequential([
-
-        base_model,
-
-        layers.GlobalAveragePooling2D(),
-
-        layers.Dense(
-
-            256,
-
-            activation="relu"
-
-        ),
-
-        layers.Dropout(
-
-            0.5
-
-        ),
-
-        layers.Dense(
-
-            config.NUM_CLASSES,
-
-            activation="softmax"
-
-        )
-
-    ])
-
-    model.compile(
-
-        optimizer="adam",
-
-        loss="sparse_categorical_crossentropy",
-
-        metrics=["accuracy"]
-
-    )
-
-    print("\nEfficientNetB7 Model Summary:\n")
-
-    model.summary()
+    # -----------------------------------
+    # Train only classifier
+    # -----------------------------------
+    for param in model.classifier.parameters():
+        param.requires_grad = True
 
     return model
 
-# ==================================================
-# Test Model
-# ==================================================
 
-if __name__ == "__main__":
+# ==========================================================
+# Factory
+# ==========================================================
 
-    build_cnn()
+def get_model(name):
 
-    build_resnet50()
+    name = name.lower()
 
-    build_efficientnetb7()
+    if name == "cnn":
+        return BaselineCNN()
+
+    elif name == "resnet50":
+        return build_resnet50()
+
+    elif name == "efficientnetb7":
+        return build_efficientnet()
+
+    else:
+        raise ValueError("Unknown model.")
