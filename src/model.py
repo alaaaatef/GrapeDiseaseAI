@@ -167,15 +167,6 @@ def build_cnn():
     return model
 
 
-# ==================================================
-# Test Model
-# ==================================================
-
-if __name__ == "__main__":
-    build_cnn()
-
-
-
 
 # ==================================================
 # Build ResNet50 Model
@@ -248,13 +239,6 @@ def build_resnet50():
     model.summary()
 
     return model
-
-# ==================================================
-# Test Model
-# ==================================================
-
-if __name__ == "__main__":
-        build_resnet50()
 
 
 
@@ -337,4 +321,9 @@ def build_efficientnetb7():
 # ==================================================
 
 if __name__ == "__main__":
+
+    build_cnn()
+
+    build_resnet50()
+
     build_efficientnetb7()
